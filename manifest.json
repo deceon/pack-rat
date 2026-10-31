@@ -1,0 +1,14 @@
+{
+  "manifest_version": 1,
+  "slug": "strongbox",
+  "name": "Strongbox",
+  "version": "1.0.0",
+  "description": "An inventory organizer. Strongbox looks up everything you own and shows it by item or by chest: your bags, bank, house chests and other characters, with totals for each place. Find items scattered across many chests, mark a chest once and let the compass lead you back to it, and give your containers your own names. Open with /strongbox or the strongbox icon. Needs Lua API 55 or later.",
+  "author": "Kronic",
+  "files": [
+    "Strongbox.lua"
+  ],
+  "icon": "icon.png",
+  "readme": "README.md",
+  "min_api_version": 55
+}
