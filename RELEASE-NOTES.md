@@ -1,4 +1,4 @@
-# Strongbox 1.0.0
+# Pack Rat 1.0.0
 
 First release: know where everything is.
 

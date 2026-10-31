@@ -1,15 +1,16 @@
--- Strongbox v1.0.0 by Kronic: an inventory organizer for Shroud of the Avatar.
+-- Pack Rat v1.0.0 by Kronic: an inventory organizer for Shroud of the Avatar.
 -- Add-ons can't list what's inside a bag, chest or bank. They can ask how many of an item you own and
--- where (ShroudSearchOwnedItems, Lua API 55+), by its exact name, one search at a time. So Strongbox
+-- where (ShroudSearchOwnedItems, Lua API 55+), by its exact name, one search at a time. So Pack Rat
 -- builds a list of item names (your recipes, your bag, what you pick up, your Crafters Ledger list and
 -- names you add), looks each one up in the background, and saves what it finds.
-Strongbox = {}
-local S = Strongbox
+PackRat = {}
+local S = PackRat
 local VERSION = '1.0.0'
-local function say(s) print('[Strongbox] '..s) end
+local function say(s) print('[Pack Rat] '..s) end
 local LUA = type(ShroudLuaPath)=='string' and ShroudLuaPath or nil
-local DATA = LUA and (LUA..'/Strongbox-data.tsv') or nil
+local DATA = LUA and (LUA..'/pack-rat-data.tsv') or nil
 local CL_DATA = LUA and (LUA..'/CraftersLedger-data.tsv') or nil
+local OLD_DATA = LUA and (LUA..'/Strongbox-data.tsv') or nil   -- the test build's name
 
 local function valid(s) return type(s)=='string' and #s>0 and not s:find('[\t\r\n]') end
 local function trim(s) return (tostring(s or ''):gsub('^%s+',''):gsub('%s+$','')) end
@@ -30,7 +31,7 @@ local function wallTime()
 end
 
 ---------------------------------------------------------------------------------------------------
--- What Strongbox knows
+-- What Pack Rat knows
 local names = {}        -- lower name -> display name: every item name it can look up
 local found = {}        -- lower name -> {name,at,total,rows,none,failed,why}; at = wall time (or nil)
 local itemType = {}     -- lower name -> type from your bag (weapon, food, reagent...) when the game says
@@ -90,7 +91,13 @@ local function readLines(path,fn)
 end
 
 local function load()
-    readLines(DATA,function(line)
+    local from=DATA
+    -- installed the test build while it was still called Strongbox: start from its file
+    if DATA and type(io)=='table' and type(io.open)=='function' then
+        local f=io.open(DATA,'r')
+        if f then f:close() else from=OLD_DATA end
+    end
+    readLines(from,function(line)
         local tag=line:match('^(@%a+)\t')
         if tag=='@name' then addName(line:match('^@name\t([^\t]+)$'))
         elseif tag=='@set' then
@@ -587,14 +594,14 @@ local function buildUI()
     el.body=UI.Column{style={flexShrink=0,paddingRight=18}}
     el.pageLabel=label('')
     el.status=label('')
-    el.message=label('Strongbox looks up every item name it knows and remembers where your things are.')
+    el.message=label('Pack Rat looks up every item name it knows and remembers where your things are.')
     local function findName()
         -- an exact name nothing else knows: add it and look it up now
         local n=trim(el.search:GetText())
         if not valid(n) then msg('Type the exact item name in the search box first.'); return end
         addName(n); want(n,true); msg('Looking up "'..n..'" by its exact name...')
     end
-    win=UI.Window{id='strongbox_main',title='Strongbox',width=960,height=660,minWidth=760,minHeight=420,x=90,y=80,escCloses=true,
+    win=UI.Window{id='packrat_main',title='Pack Rat',width=960,height=660,minWidth=760,minHeight=420,x=90,y=80,escCloses=true,
         style={paddingLeft=16,paddingRight=16,paddingTop=10,paddingBottom=10},children={
             row{viewButtons.Items,viewButtons.Chests,viewButtons.Scattered,UI.Label{text='',style={flexGrow=1}},
                 UI.Button{text='Scan everything',tooltip='Look up every item name again (about a quarter second each)',
@@ -604,7 +611,7 @@ local function buildUI()
                 UI.Button{text='Look up exact name',tooltip='For an item none of your recipes or bags mention',onClick=findName},
                 label('Sort',40),sortPick},
             el.status,
-            UI.Scroll{id='strongbox_scroll',style={height=0,flexGrow=1,flexShrink=1},children={el.body}},
+            UI.Scroll{id='packrat_scroll',style={height=0,flexGrow=1,flexShrink=1},children={el.body}},
             row{UI.Button{text='Previous',onClick=function() local v=S.settings.view; page[v]=math.max(1,(page[v] or 1)-1); render() end},
                 el.pageLabel,UI.Button{text='Next',onClick=function() local v=S.settings.view; page[v]=(page[v] or 1)+1; render() end}},
             el.message,
@@ -621,32 +628,32 @@ local function openWindow() if not win then buildUI() else win:Show(); render() 
 
 function ShroudOnStart()
     if Shroud and Shroud.Command then
-        if not pcall(Shroud.Command,'strongbox',function() S.open() end) then say('Use /lua code Strongbox.open() to open it.') end
+        if not pcall(Shroud.Command,'packrat',function() S.open() end) then say('Use /lua code PackRat.open() to open it.') end
     end
     if Shroud and Shroud.Keybind then
-        pcall(Shroud.Keybind,{id='toggle',label='Show/hide Strongbox',onPress=function() S.toggle() end})
+        pcall(Shroud.Keybind,{id='toggle',label='Show/hide Pack Rat',onPress=function() S.toggle() end})
     end
     local ok,err=pcall(function()
         UI=Shroud.UI
         if UI.HudFrame then
             local texture=-1
             if type(ShroudLoadTexture)=='function' then
-                for _,path in ipairs({'strongbox/icon.png','icon.png'}) do
+                for _,path in ipairs({'pack-rat/icon.png','icon.png'}) do
                     local loaded,id=pcall(ShroudLoadTexture,path)
                     if loaded and type(id)=='number' and id>=0 then texture=id; break end
                 end
             end
             local button
             if texture>=0 and UI.IconButton then
-                button=UI.IconButton{texture=texture,tooltip='Strongbox - where your things are',style={width=46,height=46},onClick=function() S.toggle() end}
+                button=UI.IconButton{texture=texture,tooltip='Pack Rat - where your things are',style={width=46,height=46},onClick=function() S.toggle() end}
             else
-                button=UI.Button{text='Box',tooltip='Strongbox',style={width=46,height=46},onClick=function() S.toggle() end}
+                button=UI.Button{text='Rat',tooltip='Pack Rat',style={width=46,height=46},onClick=function() S.toggle() end}
             end
-            launcher=UI.HudFrame{id='strongbox_launcher',x=20,y=360,width=50,height=50,children={button}}
+            launcher=UI.HudFrame{id='packrat_launcher',x=20,y=360,width=50,height=50,children={button}}
         end
     end)
     if not ok then say('Launcher button unavailable: '..tostring(err)) end
-    say('v'..VERSION..' loaded. Open it with /strongbox or the strongbox icon.')
+    say('v'..VERSION..' loaded. Open it with /packrat or the Pack Rat icon.')
 end
 
 -- What you pick up or loot: new names, and a fresh count for them

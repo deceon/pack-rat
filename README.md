@@ -1,16 +1,16 @@
-# Strongbox
+# Pack Rat
 
 Creator: Kronic | Version 1.0.0
 
-An inventory organizer for Shroud of the Avatar. Strongbox finds everything you own and shows it by item or by chest: your bags, your bank, every house lot and your other characters, with a total for each place and the containers inside it.
+An inventory organizer for Shroud of the Avatar. Pack Rat finds everything you own and shows it by item or by chest: your bags, your bank, every house lot and your other characters, with a total for each place and the containers inside it.
 
 ## How it finds your things
 
-The game lets add-ons ask how many of an item you own and where, but only by the item's exact name, one item at a time. Strongbox keeps a list of every item name it knows: everything your recipes make or use, everything in your bag, anything you pick up or loot, your Crafters Ledger shopping list, and names you look up yourself. It checks each one in the background, about four a second, and saves what it finds, so the next time you open it your things show straight away.
+The game lets add-ons ask how many of an item you own and where, but only by the item's exact name, one item at a time. Pack Rat keeps a list of every item name it knows: everything your recipes make or use, everything in your bag, anything you pick up or loot, your Crafters Ledger shopping list, and names you look up yourself. It checks each one in the background, about four a second, and saves what it finds, so the next time you open it your things show straight away.
 
-The first scan after installing takes a few minutes (about 8 minutes for 2,000 names). After that, Strongbox only rechecks what has changed or is more than a few hours old, and counts your bag again whenever it changes. Click **Scan everything** to check every name again, or **Pause** to stop for a while.
+The first scan after installing takes a few minutes (about 8 minutes for 2,000 names). After that, Pack Rat only rechecks what has changed or is more than a few hours old, and counts your bag again whenever it changes. Click **Scan everything** to check every name again, or **Pause** to stop for a while.
 
-Something no recipe uses and that you haven't carried since installing, like an old quest item, isn't on the list yet. Type its full name in the search box and click **Look up exact name**; from then on Strongbox keeps track of it.
+Something no recipe uses and that you haven't carried since installing, like an old quest item, isn't on the list yet. Type its full name in the search box and click **Look up exact name**; from then on Pack Rat keeps track of it.
 
 ## Pages
 
@@ -24,8 +24,8 @@ Stand next to a chest and click **Mark** on its line once. After that, **Compass
 
 ## Opening it
 
-Click the strongbox icon, type `/strongbox`, or set a key for it under **Keys** on its row in the **Add-Ons** window.
+Click the Pack Rat icon, type `/packrat`, or set a key for it under **Keys** on its row in the **Add-Ons** window.
 
 ## Installation
 
-Import or extract the complete strongbox folder, including manifest.json and icon.png. Strongbox needs a game client with Lua API 55 or later. Your counts, marks and names are saved in Strongbox-data.tsv in the main Lua folder, so updating keeps them.
+Import or extract the complete pack-rat folder, including manifest.json and icon.png. Pack Rat needs a game client with Lua API 55 or later. Your counts, marks and names are saved in pack-rat-data.tsv in the main Lua folder, so updating keeps them.
