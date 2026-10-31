@@ -275,8 +275,15 @@ local PLACE_RANK={carried=1,bank=2,houseStorage=3,otherCharacters=4,mail=5,vendo
 local LOOSE='Not in a container'
 -- The game's location can carry an internal scene name ("Ivory Stronghold: BasementSceneDungeonTown_Arena
 -- (Town Lot Basement)"): show "Ivory Stronghold (Town Lot Basement)". Keys keep the full text.
+-- Some house containers come with their position ("... (City Lot) at X 322, Y 85, Z -38"): it is kept
+-- for the compass and left out of what you read.
+local COORDS='%s*at X%s*(%-?[%d%.]+),%s*Y%s*(%-?[%d%.]+),%s*Z%s*(%-?[%d%.]+)'
+local function coordsOf(loc)
+    local x,y,z=tostring(loc or ''):match(COORDS)
+    if x then return tonumber(x),tonumber(y),tonumber(z) end
+end
 local function niceLocation(loc)
-    local out=tostring(loc or '')
+    local out=tostring(loc or ''):gsub(COORDS,'')
     out=out:gsub(':%s*[%w_]*Scene[%w_]*',''):gsub(':%s*%w+_[%w_]+','')
     out=out:gsub('%s+',' '):gsub('^%s+',''):gsub('%s+$','')
     return out
@@ -310,7 +317,8 @@ local function chests()
     table.sort(out,function(a,b)
         local ra,rb=PLACE_RANK[a.place] or 9,PLACE_RANK[b.place] or 9
         if ra~=rb then return ra<rb end
-        if a.loc~=b.loc then return a.loc<b.loc end
+        local la,lb=niceLocation(a.loc),niceLocation(b.loc)
+        if la~=lb then return la<lb end
         return shownBox(a.loc,a.box)<shownBox(b.loc,b.box)
     end)
     for _,c in ipairs(out) do table.sort(c.items,function(a,b) return a.name<b.name end) end
@@ -345,7 +353,8 @@ local open = {}                 -- expanded rows: 'item|<lower>' or 'chest|<key>
 local naming = nil              -- the container whose name box is open
 local query = ''
 local PAGE = 10
-local CHEST_SHOW = 40           -- items shown inside an opened chest (element limits)
+local CHEST_SHOW = 40           -- items shown at a time inside an opened chest (element limits)
+local chestPage = {}            -- chest key -> which 40 are showing
 local render
 local function msg(s) if el.message then el.message:SetText(s) end; say(s) end
 local function label(text,width)
@@ -376,10 +385,27 @@ local function clearCompass()
     beaconOn=nil
     msg(ok and 'Compass cleared.' or 'Type /beacon clear to clear the compass.')
 end
+-- The scene a location is in: the part before the first ":" or "(" ("Ivory Stronghold")
+local function sceneOf(loc)
+    return trim((niceLocation(loc):match('^([^:(]+)')) or '')
+end
+local function hereName()
+    if type(ShroudGetCurrentSceneName)~='function' then return nil end
+    local ok,n=pcall(ShroudGetCurrentSceneName)
+    if ok and type(n)=='string' and n~='' then return n end
+end
 local function pointAt(loc,box)
     local key=spotKey(loc,box)
-    local sp=S.spots[key]; if not sp then return end
-    if hereRaw()~=sp.raw then msg(shownBox(loc,box)..' is in '..niceLocation(loc)..'. Go there, then click Compass again.'); return end
+    local sp=S.spots[key]
+    local cx,cy,cz=coordsOf(loc)
+    if cx and not sp then
+        local here,there=hereName(),sceneOf(loc)
+        if here and there~='' and not string.lower(here):find(string.lower(there),1,true) then
+            msg(shownBox(loc,box)..' is in '..there..'. Go there, then click Compass again.'); return
+        end
+        sp={x=cx,y=cy,z=cz}
+    elseif not sp then return
+    elseif hereRaw()~=sp.raw then msg(shownBox(loc,box)..' is in '..niceLocation(loc)..'. Go there, then click Compass again.'); return end
     if type(ShroudSetBeacon)~='function' then msg('This game client cannot set the compass.'); return end
     local ok,set=pcall(ShroudSetBeacon,sp.x,sp.y,sp.z,tostring(shownBox(loc,box)):gsub('[%[%]<>]',''):sub(1,40))
     if ok and set~=false then beaconOn=key; msg('Your compass points at '..shownBox(loc,box)..'. Click Clear compass to remove it.')
@@ -389,17 +415,20 @@ end
 local function chestButtons(place,loc,box,parts)
     local key=spotKey(loc,box)
     if place=='houseStorage' or place=='bank' or place=='unknown' then
+        local placed=coordsOf(loc)~=nil
         local known=S.spots[key]~=nil
-        if known then
+        if known or placed then
             local pointing=beaconOn==key
             parts[#parts+1]=UI.Button{text=pointing and 'Clear compass' or 'Compass',style={width=pointing and 130 or 90},
                 tooltip='Point your compass at it (works in its scene)',
                 onClick=function() if beaconOn==key then clearCompass() else pointAt(loc,box) end; render() end}
         end
-        parts[#parts+1]=UI.Button{text=known and 'Re-mark' or 'Mark',style={width=80},
-            tooltip='Stand next to it and click to remember where it is, for the compass',
-            onClick=function() markSpot(loc,box); render() end}
-        if known then
+        if not placed then
+            parts[#parts+1]=UI.Button{text=known and 'Re-mark' or 'Mark',style={width=80},
+                tooltip='Stand next to it and click to remember where it is, for the compass',
+                onClick=function() markSpot(loc,box); render() end}
+        end
+        if known and not placed then
             parts[#parts+1]=UI.Button{text='Unmark',style={width=80},tooltip='Forget where it is',
                 onClick=function() if beaconOn==key then clearCompass() end; S.spots[key]=nil; save(); render() end}
         end
@@ -449,21 +478,23 @@ local function itemPlaces(parent,o)
     local places,order={},{}
     for _,r in ipairs(o.rows) do
         local loc=tostring(r.location or ''):gsub('%s*%(in a container%)','')
-        local pk=r.place..'|'..loc
+        local pk=r.place..'|'..niceLocation(loc)
         local p=places[pk]
         if not p then p={place=r.place,loc=loc,total=0,boxes={},order={}}; places[pk]=p; order[#order+1]=p end
         local box=(r.container and r.container~='') and r.container or LOOSE
-        if not p.boxes[box] then p.boxes[box]=0; p.order[#p.order+1]=box end
-        p.boxes[box]=p.boxes[box]+r.quantity; p.total=p.total+r.quantity
+        local bk=box..'|'..loc
+        if not p.boxes[bk] then p.boxes[bk]={box=box,loc=loc,qty=0}; p.order[#p.order+1]=bk end
+        p.boxes[bk].qty=p.boxes[bk].qty+r.quantity; p.total=p.total+r.quantity
     end
     table.sort(order,function(a,b) return (PLACE_RANK[a.place] or 9)<(PLACE_RANK[b.place] or 9) end)
     for _,p in ipairs(order) do
         parent:Add(row{spacer(32),flexLabel(placeLabel(p.place,p.loc),13,'@gold'),label(p.total,80)})
-        for _,box in ipairs(p.order) do
-            local parts={spacer(64),flexLabel(shownBox(p.loc,box)..(S.nicknames[spotKey(p.loc,box)] and ('  ('..box..')') or '')),label(p.boxes[box],80)}
-            chestButtons(p.place,p.loc,box,parts)
+        for _,bk in ipairs(p.order) do
+            local b=p.boxes[bk]
+            local parts={spacer(64),flexLabel(shownBox(b.loc,b.box)..(S.nicknames[spotKey(b.loc,b.box)] and ('  ('..b.box..')') or '')),label(b.qty,80)}
+            chestButtons(p.place,b.loc,b.box,parts)
             parent:Add(row(parts))
-            nameBox(parent,p.loc,box)
+            nameBox(parent,b.loc,b.box)
         end
     end
     if o.truncated then parent:Add(label('The game cut this list short; the total is still complete.')) end
@@ -525,11 +556,18 @@ local function renderChests(body)
         box:Add(row(parts))
         nameBox(box,c.loc,c.box)
         if open[key] then
-            for j=1,math.min(#c.items,CHEST_SHOW) do
+            local pages=math.max(1,math.ceil(#c.items/CHEST_SHOW))
+            local cp=math.max(1,math.min(chestPage[c.key] or 1,pages))
+            for j=(cp-1)*CHEST_SHOW+1,math.min(cp*CHEST_SHOW,#c.items) do
                 local it=c.items[j]
                 box:Add(row{spacer(40),flexLabel(it.name),label(it.qty,80)})
             end
-            if #c.items>CHEST_SHOW then box:Add(row{spacer(40),label('...and '..(#c.items-CHEST_SHOW)..' more. Search for them on the Items page.')}) end
+            if pages>1 then
+                box:Add(row{spacer(40),
+                    UI.Button{text='Back',style={width=70},onClick=function() chestPage[c.key]=math.max(1,cp-1); render() end},
+                    label('Items '..((cp-1)*CHEST_SHOW+1)..'-'..math.min(cp*CHEST_SHOW,#c.items)..' of '..#c.items,170),
+                    UI.Button{text='More',style={width=70},onClick=function() chestPage[c.key]=math.min(pages,cp+1); render() end}})
+            end
         end
         body:Add(box)
     end
@@ -668,6 +706,7 @@ local bagChanged=false
 function ShroudOnInventoryChanged() bagChanged=true end
 
 local warmAt,saveTimer,fast,bagTimer=5,0,0,0
+local recipeTries=0
 function ShroudOnUpdate()
     local dt=tonumber(ShroudDeltaTime) or 0
     clockNow=clockNow+dt
@@ -687,7 +726,12 @@ function ShroudOnUpdate()
             if warmAt<=0 then
                 warmAt=nil
                 bagNames()
-                if not startRecipeNames() then warmAt=10 end
+                -- recipe book not ready yet: scan what it has now, try the recipes again shortly
+                if not startRecipeNames() then
+                    recipeTries=recipeTries+1
+                    if recipeTries<=6 then warmAt=10 end
+                    if recipeTries==1 then S.scan(false) end
+                end
             end
         end
         if recipeJob then
