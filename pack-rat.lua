@@ -40,9 +40,15 @@ S.settings = {view='Items', sort='Name'}
 local dataVersion = 0   -- goes up whenever counts change, so pages redraw
 local dirty = false
 
-local function addName(name)
+local prio = {}          -- lower name -> 1 your bag, list, pickups, typed; 2 materials; 3 crafted items
+local function addName(name,p)
     if not valid(name) then return false end
     local k=string.lower(name)
+    -- names read back from the saved file get their rank when the recipes are read again
+    if p~='saved' then
+        p=p or 1
+        if not prio[k] or p<prio[k] then prio[k]=p end
+    end
     if names[k] then return false end
     names[k]=name; dirty=true
     return true
@@ -99,7 +105,7 @@ local function load()
     end
     readLines(from,function(line)
         local tag=line:match('^(@%a+)\t')
-        if tag=='@name' then addName(line:match('^@name\t([^\t]+)$'))
+        if tag=='@name' then addName(line:match('^@name\t([^\t]+)$'),'saved')
         elseif tag=='@set' then
             local k,v=line:match('^@set\t([^\t]+)\t([^\t]*)$'); if k then S.settings[k]=v end
         elseif tag=='@type' then
@@ -144,7 +150,7 @@ local queue, queued = {}, {}
 local inflight = nil            -- {k,name,at}
 local clockNow = 0
 local paused = false
-local TIMEOUT, STALE, BACKOFF = 6, 6*3600, 5
+local TIMEOUT, STALE, BACKOFF = 2.5, 6*3600, 3
 local nextAt = 0
 local scanned, scanTarget = 0, 0    -- this session's progress through a full scan
 
@@ -162,7 +168,7 @@ local function want(name,front)
 end
 local function isStale(o)
     if not o then return true end
-    if o.failed then return clockNow-(o.failedAt or 0)>60 end
+    if o.failed then return clockNow-(o.failedAt or 0)>20 end
     local now=wallTime()
     return not (now and o.at and now-o.at<STALE)
 end
@@ -212,10 +218,25 @@ local function pump()
 end
 -- Scan every name whose count is old (or every name, when everything=true)
 function S.scan(everything)
-    local n=0
+    local todo={}
     for k,name in pairs(names) do
-        if everything or isStale(found[k]) then want(name); n=n+1 end
+        if everything or isStale(found[k]) then todo[#todo+1]=k end
     end
+    -- likely things first: your bag and list, then materials, then crafted items; owned before never-seen
+    table.sort(todo,function(a,b)
+        local pa,pb=prio[a] or 2,prio[b] or 2
+        if pa~=pb then return pa<pb end
+        local oa,ob=found[a] and not found[a].none and 0 or 1,found[b] and not found[b].none and 0 or 1
+        if oa~=ob then return oa<ob end
+        return a<b
+    end)
+    -- start the waiting list over in this order (anything you asked for first stays first)
+    local keep={}
+    for _,name in ipairs(queue) do if (prio[string.lower(name)] or 2)==1 then keep[#keep+1]=name end end
+    queue,queued={},{}
+    for _,name in ipairs(keep) do want(name) end
+    local n=0
+    for _,k in ipairs(todo) do want(names[k]); n=n+1 end
     scanned, scanTarget = 0, #queue
     paused=false
     return n
@@ -242,10 +263,10 @@ local function recipeStep()
         if field(r,'ingredients')==nil and field(r,'id')~=nil and type(ShroudGetRecipe)=='function' then
             local ok,v=pcall(ShroudGetRecipe,field(r,'id')); if ok and type(v)=='table' then d=v end
         end
-        for _,res in ipairs(list(field(d,'results'))) do if addName(field(res,'name')) then j.added=j.added+1 end end
+        for _,res in ipairs(list(field(d,'results'))) do if addName(field(res,'name'),3) then j.added=j.added+1 end end
         for _,ing in ipairs(list(field(d,'ingredients'))) do
-            if field(ing,'group')~=true and addName(field(ing,'name')) then j.added=j.added+1 end
-            for _,c in ipairs(list(field(ing,'choices'))) do if addName(field(c,'name')) then j.added=j.added+1 end end
+            if field(ing,'group')~=true and addName(field(ing,'name'),2) then j.added=j.added+1 end
+            for _,c in ipairs(list(field(ing,'choices'))) do if addName(field(c,'name'),2) then j.added=j.added+1 end end
         end
         local t=clock()
         if (start and t and t-start>=0.004) or (not (start and t) and done>=20) then return false end
